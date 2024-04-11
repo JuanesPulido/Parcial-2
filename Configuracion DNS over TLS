@@ -1,0 +1,91 @@
+--Reglas de aceptacion de los puertos:
+# sudo ufw status numbered
+
+[ 7] Bind9                      ALLOW IN    Anywhere
+[ 8] 853/tcp                    ALLOW IN    Anywhere
+
+--- Capturar el trafico:
+Verificamos si NetworkManager esta instalado en nuestro sistema:
+
+$Sudo systemctl status Networkmanager
+
+--Dado el caso que no este intalado se intala:
+
+$Sudo apt install network-manager
+
+-Se verifica el estado del NetworkManager:
+
+sudo resolvectl status
+#DNS=
+#FallbackDNS=
+#Domains=
+#LLMNR=no
+#MulticastDNS=no
+#DNSSEC=no
+#DNSOverTLS=no
+#Cache=yes
+#DNSStubListener=yes
+#ReadEtcHosts=yes
+
+--Evidenciando que aun no esta activo el TLS sobre DNS entramos al directorio.
+
+$sudo vim/etc/systemd/resolved.conf
+
+--Cambiamos dentro del directorio lo siguiente:
+
+[Resolve]
+DNS=1.1.1.1 1.0.0.1
+FallbackDNS=8.8.8.8 8.8.4.4
+Domains=~.
+#LLMNR=no
+#MulticastDNS=no
+DNSSEC=yes
+DNSOverTLS=yes
+#Cache=yes
+#DNSStubListener=yes
+#ReadEtcHosts=yes
+
+--Reiniciamos el servicios:
+
+$sudo systemctl restart NetworkManager
+
+--Verificamos el estado: 
+
+$resolvectl status
+
+-La salida se veria de la siguiente manera:
+
+Global
+       LLMNR setting: no
+MulticastDNS setting: no
+  DNSOverTLS setting: yes
+      DNSSEC setting: yes
+    DNSSEC supported: yes
+  Current DNS Server: 1.1.1.1
+         DNS Servers: 1.1.1.1
+                      1.0.0.1
+Fallback DNS Servers: 8.8.8.8
+                      8.8.4.4
+          DNS Domain: ~.
+
+-Por ultimo creamos un archivo dentro de /etc/NetworkManager/conf.d named 10-dns-systemd-resolved.conf.:
+
+$sudo vi /etc/NetworkManager/conf.d named 10-dns-systemd-resolved.conf.
+
+-Dentro se vera así:
+[main]
+dns=systemd-resolved
+systemd-resolved=false
+
+--Por ultimo reiniciamos los sistemas:
+
+$ sudo systemctl start systemd-resolved
+$ sudo systemctl enable systemd-resolved
+$ sudo systemctl restart NetworkManager
+
+Ya podemos hacer las consultas dentro de WIRESHARK ejemplo:
+
+$sudo resolvectl query www.google.com.
+
+-- En wireshark
+tcp.port == 853 # Filtro por el puerto 853 que es DNS over TLS
