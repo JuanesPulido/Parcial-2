@@ -1,0 +1,103 @@
+Se utilizara el servicio de FTP seguro, para asegurar la transmision de datos de manera segura.
+Modo pasivo:se va a generar un rango de puertos, este puerto sera aleatorio  dentro de los rangos, el cliente solicita el servicio, posterior a esto el servidor da una respuesta seleccionando el rango y el cliente recibe el puerto por el que se debe conectar, posterior a esto se pueden subir los datos y despues cerrar sesion.
+
+Generacion de certificado seguro, que durara 1 año:
+
+$sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/apache-selfsigned.key -out /etc/ssl/certs/apache-selfsigned.crt
+
+--- Archivo de configuracion:
+
+$sudo vim /etc/vsftpd.conf
+
+write enable sirve para permitir crear carpetas y modificar archivos
+
+rsa_cert_file=/etc/ssl/private/vsftpd.pem
+rsa_private_key_file=/etc/ssl/private/vsftpd.pem
+ssl_enable=YES            #activa el servicio seguro
+allow_anon_ssl=NO         #Deniega usuarios anonimos
+force_local_data_ssl=YES  #Permite la informacion de usuarios locales, permite el paso de archivos de forma local
+force_local_logins_ssl=YES#Permite el login seguro de los clientes
+ssl_tlsv1=YES             #certificado de confiabilidad
+ssl_sslv2=NO
+ssl_sslv3=NO
+require_ssl_reuse=NO #No permite el reuso del certificado ssl, No a la clonacion
+ssl_ciphers=HIGH     #Modo de Cifrado seguro, es mas complejo.
+pasv_promiscuous=YES #Permite la conexion del filezilla al servidor FTP
+
+--- Modificacion del archivo de Vagrant (Vagrantfile), para soportar una IP publica.
+
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure("2") do |config|
+ config.vm.define :servidor do |servidor|
+ servidor.vm.box = "ubuntu/jammy64"
+ servidor.vm.network :private_network, ip: "192.168.50.3"
+ servidor.vm.hostname = "servidor"    #ASIGNACION DE IP PUBLICA
+ servidor.vm.network :public_network
+ end
+ config.vm.define :cliente do |cliente|
+ cliente.vm.box = "ubuntu/jammy64"
+ cliente.vm.network :private_network, ip: "192.168.50.2"
+ cliente.vm.hostname = "cliente"
+ end
+
+end
+
+--- Configuracion del firewall (Maquina de servidor).
+
+-- Configuracion de before rules
+$sudo vim /etc/ufw/before.rules
+
+#NAT table rules
+*nat
+:POSTROUTING ACCEPT [0:0]
+
+#Forward traffic from port 21 to port 21
+-A PREROUTING -p tcp --dport 21 -j DNAT --to-destination 192.168.50.2:21
+
+#Dont masquerade local traffic
+-A POSTROUTING -s 192.168.50.0/24 -o enp0s8 -j MASQUERADE
+-A POSTROUTING -s 192.168.1.0/24 -o enp0s8 -j MASQUERADE
+-A POSTROUTING -s 11.11.17.0/24 -o enp0s8 -j MASQUERADE
+-A POSTROUTING -s 172.20.10.0/24 -o enp0s8 -j MASQUERADE
+-A POSTROUTING -s 192.168.1.0/24 -o enp0s8 -j MASQUERADE
+
+--Reglas de aceptacion de los puertos:
+
+$sudo ufw status numbered
+
+[ 1] 22/tcp                     ALLOW IN    Anywhere
+[ 2] 21/tcp                     ALLOW IN    Anywhere
+[ 3] Apache Full                ALLOW IN    Anywhere
+[ 4] 20/tcp                     ALLOW IN    Anywhere
+[ 5] 990/tcp                    ALLOW IN    Anywhere
+[ 6] 40000:50000/tcp            ALLOW IN    Anywhere
+[ 7] Bind9                      ALLOW IN    Anywhere
+[ 8] 853/tcp                    ALLOW IN    Anywhere
+[ 9] 22/tcp (v6)                ALLOW IN    Anywhere (v6)
+[10] 21/tcp (v6)                ALLOW IN    Anywhere (v6)
+[11] Apache Full (v6)           ALLOW IN    Anywhere (v6)
+[12] 20/tcp (v6)                ALLOW IN    Anywhere (v6)
+[13] 990/tcp (v6)               ALLOW IN    Anywhere (v6)
+[14] 40000:50000/tcp (v6)       ALLOW IN    Anywhere (v6)
+[15] Bind9 (v6)                 ALLOW IN    Anywhere (v6)
+[16] 853/tcp (v6)               ALLOW IN    Anywhere (v6)
+
+Los unicos puertos necesarion son 21,990,40000:50000 (son respectivamente FTP, VSFTPD y Puertos de asignamiento por parte del servidor con vsftpd).
+
+--- Configuracion del firewall (Maquina de cliente o servidor Vsftpd).
+
+Debe agregarse la siguiente regla, para unicamente permitir que se pueda ingresar a este servidor mediante el direccionamiento que proporciona el firewall, esto con el fin que desde un cliente como filezilla no se pueda ingresar directamente sin el firewall.
+
+$sudo ufw allow from 192.168.50.3 to any port 21
+
+Tendria que aparecer algo tal que asi al darle $sudo ufw status
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW       Anywhere
+21                         ALLOW       192.168.50.3
+22/tcp (v6)                ALLOW       Anywhere (v6)
+
+Como se puede observar solo permitira el ingreso a este servidor desde la IP configurada, que en este caso es la 192.168.50.3 (SErvidor con Firewall)
